@@ -7,6 +7,7 @@ using Dentists.Infrastructure.Repositories;
 using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,7 +16,12 @@ builder.Services.AddProblemDetails();
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+// Appointment statuses cross the wire as names. Without this they would be the enum's
+// ordinals, which are meaningless to a caller and silently wrong if the enum ever gains a
+// member in the middle.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 // Learn more about configuring Swagger at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
