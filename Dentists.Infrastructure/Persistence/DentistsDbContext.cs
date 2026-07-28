@@ -5,78 +5,85 @@ using Microsoft.EntityFrameworkCore;
 
 public class DentistsDbContext : DbContext
 {
+    public const string DentistsContainer = "dentists";
+
     public DentistsDbContext(DbContextOptions<DentistsDbContext> options) : base(options)
     {
     }
 
     public DbSet<Dentist> Dentists { get; set; } = null!;
 
-    public DbSet<DentistAppointment> DentistAppointments { get; set; } = null!;
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
+        // Every property is given its stored name explicitly. EF would otherwise use the CLR
+        // name, and the document shape is not something to change later without a migration.
         modelBuilder.Entity<Dentist>(entity =>
         {
+            entity.ToContainer(DentistsContainer);
+
             entity.HasKey(e => e.Id);
 
-            entity.Property(e => e.CorrelationId)
-                .IsRequired();
+            entity.Property(e => e.Id)
+                .ToJsonProperty("id");
 
-            entity.HasIndex(e => e.CorrelationId)
-                .IsUnique();
+            // Partitioning on the id spreads dentists evenly and keeps each aggregate — the
+            // dentist and its embedded appointments — inside one logical partition, which is
+            // the only scope Cosmos writes atomically.
+            entity.HasPartitionKey(e => e.Id);
 
             entity.Property(e => e.FirstName)
-                .IsRequired()
-                .HasMaxLength(100);
+                .ToJsonProperty("firstName")
+                .IsRequired();
 
             entity.Property(e => e.LastName)
-                .IsRequired()
-                .HasMaxLength(100);
-
-            entity.Property(e => e.LastUpdatedDate)
-                .IsRequired()
-                .IsConcurrencyToken()
-                .HasDefaultValueSql("GETUTCDATE()");
-
-            entity.HasMany(e => e.Appointments)
-                .WithOne(a => a.Dentist)
-                .HasForeignKey(a => a.DentistId)
-                .OnDelete(DeleteBehavior.Cascade);
-
-            entity.ToTable("dentists");
-        });
-
-        modelBuilder.Entity<DentistAppointment>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-
-            entity.Property(e => e.AppointmentCorrelationId)
-                .IsRequired();
-
-            // One row per booking: an event redelivered by the Appointments service must not
-            // create a second copy.
-            entity.HasIndex(e => e.AppointmentCorrelationId)
-                .IsUnique();
-
-            entity.Property(e => e.ScheduledDate)
+                .ToJsonProperty("lastName")
                 .IsRequired();
 
             entity.Property(e => e.LastUpdatedDate)
-                .IsRequired()
-                .IsConcurrencyToken()
-                .HasDefaultValueSql("GETUTCDATE()");
+                .ToJsonProperty("lastUpdatedDate")
+                .IsRequired();
 
-            entity.Property(e => e.Status)
-                .IsRequired()
-                .HasMaxLength(20)
-                .HasConversion<string>();
+            // Cosmos has no concurrency token of our own choosing; the server-maintained _etag
+            // is what makes a read-modify-write fail rather than silently overwrite.
+            entity.UseETagConcurrency();
 
-            // Availability filters on dentist, then window, then status.
-            entity.HasIndex(e => new { e.DentistId, e.ScheduledDate, e.Status });
+            // Owned, so the appointments serialize as an array inside the dentist document
+            // instead of becoming documents in their own right.
+            entity.OwnsMany(e => e.Appointments, appointment =>
+            {
+                appointment.ToJsonProperty("appointments");
 
-            entity.ToTable("dentist_appointments");
+                // Without this EF keys embedded entries by their position in the array, so
+                // removing one renumbers the rest. The booking's own id is stable instead.
+                appointment.HasKey(a => a.AppointmentCorrelationId);
+
+                // Named rather than left to convention only so its stored name can be set;
+                // the convention picks a PascalCase one that the rest of the document isn't.
+                appointment.WithOwner().HasForeignKey("DentistId");
+                appointment.Property<Guid>("DentistId")
+                    .ToJsonProperty("dentistId");
+
+                appointment.Property(a => a.AppointmentCorrelationId)
+                    .ToJsonProperty("appointmentCorrelationId")
+                    .IsRequired();
+
+                appointment.Property(a => a.ScheduledDate)
+                    .ToJsonProperty("scheduledDate")
+                    .IsRequired();
+
+                appointment.Property(a => a.LastUpdatedDate)
+                    .ToJsonProperty("lastUpdatedDate")
+                    .IsRequired();
+
+                // Stored by name so a value added to the enum cannot reinterpret existing
+                // documents the way a shifted ordinal would.
+                appointment.Property(a => a.Status)
+                    .ToJsonProperty("status")
+                    .IsRequired()
+                    .HasConversion<string>();
+            });
         });
     }
 }

@@ -51,11 +51,11 @@ public class DentistsController : ControllerBase
     /// <summary>
     /// Get dentist by ID
     /// </summary>
-    [HttpGet("{id:int}")]
+    [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(DentistDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<DentistDto>> GetById(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<DentistDto>> GetById(Guid id, CancellationToken cancellationToken)
     {
         var query = new GetDentistByIdQuery { Id = id };
         var result = await _mediator.Send(query, cancellationToken);

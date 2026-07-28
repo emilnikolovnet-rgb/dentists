@@ -2,7 +2,6 @@ namespace Dentists.Infrastructure.Repositories;
 
 using Dentists.Domain.Repositories;
 using Dentists.Infrastructure.Persistence;
-using Microsoft.EntityFrameworkCore;
 
 public class UnitOfWork : IUnitOfWork
 {
@@ -32,18 +31,15 @@ public class UnitOfWork : IUnitOfWork
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken = default)
     {
-        // Azure SQL enables a retrying execution strategy, which forbids user-initiated
-        // transactions unless the whole unit of work is wrapped in the strategy.
-        var strategy = _context.Database.CreateExecutionStrategy();
+        // Cosmos has no user-initiated transaction to open: the provider rejects
+        // BeginTransactionAsync outright. What it does give is a transactional batch per
+        // partition key, which SaveChanges builds on its own. So the operation runs, and one
+        // SaveChanges at the end commits every change it made to a given dentist atomically.
+        // Changes spanning two dentists are two batches and can partially succeed.
+        var result = await operation(cancellationToken);
 
-        return await strategy.ExecuteAsync(async ct =>
-        {
-            await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+        await _context.SaveChangesAsync(cancellationToken);
 
-            var result = await operation(ct);
-
-            await transaction.CommitAsync(ct);
-            return result;
-        }, cancellationToken);
+        return result;
     }
 }

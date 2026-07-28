@@ -2,12 +2,12 @@ namespace Dentists.Application.DTOs;
 
 public class DentistDto
 {
-    public int Id { get; set; }
-
     /// <summary>
-    /// Stable identifier other services use to reference this dentist.
+    /// The dentist's identifier, and what other services use to reference one. Since the move
+    /// to Cosmos this is the document id and partition key rather than a store-assigned
+    /// number, so it is stable across environments and restores.
     /// </summary>
-    public Guid CorrelationId { get; set; }
+    public Guid Id { get; set; }
 
     public string FirstName { get; set; } = string.Empty;
 

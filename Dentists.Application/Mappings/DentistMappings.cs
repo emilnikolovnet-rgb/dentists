@@ -13,7 +13,6 @@ public static class DentistMappings
         return new DentistDto
         {
             Id = dentist.Id,
-            CorrelationId = dentist.CorrelationId,
             FirstName = dentist.FirstName,
             LastName = dentist.LastName,
             LastUpdatedDate = dentist.LastUpdatedDate

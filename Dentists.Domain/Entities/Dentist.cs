@@ -1,15 +1,16 @@
+using Newtonsoft.Json;
+
 namespace Dentists.Domain.Entities;
 
 public class Dentist
 {
-    public int Id { get; set; }
-
     /// <summary>
-    /// Stable identifier other services use to reference this dentist.
-    /// The database identity value is not usable for that: it is only unique per table
-    /// and is not assigned until the row is inserted.
+    /// The dentist's identity, and the identifier other services use to reference one.
+    /// Doubles as the document id and partition key in Cosmos, so it is assigned by the
+    /// application at construction and never by the store.
     /// </summary>
-    public Guid CorrelationId { get; private set; }
+    [JsonProperty(PropertyName = "id")]
+    public Guid Id { get; private set; }
 
     public string FirstName { get; private set; } = string.Empty;
 
@@ -17,6 +18,10 @@ public class Dentist
 
     public DateTime LastUpdatedDate { get; private set; }
 
+    /// <summary>
+    /// Embedded in the dentist document rather than stored separately, so availability is
+    /// answerable from one document and the aggregate is written atomically.
+    /// </summary>
     public ICollection<DentistAppointment> Appointments { get; private set; } = new List<DentistAppointment>();
 
     // Constructor
@@ -24,7 +29,7 @@ public class Dentist
 
     public Dentist(string firstName, string lastName)
     {
-        CorrelationId = Guid.NewGuid();
+        Id = Guid.NewGuid();
         FirstName = firstName;
         LastName = lastName;
         LastUpdatedDate = DateTime.UtcNow;
@@ -35,5 +40,31 @@ public class Dentist
         FirstName = firstName;
         LastName = lastName;
         LastUpdatedDate = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Records a booking against this dentist. One entry per booking: an event redelivered by
+    /// the Appointments service must not create a second copy. Cosmos has no unique index to
+    /// enforce that, so the aggregate does it — which is safe because the whole collection
+    /// lives in this document and is written under a single etag check.
+    /// </summary>
+    public DentistAppointment AddAppointment(Guid appointmentCorrelationId, DateTime scheduledDate)
+    {
+        var existing = FindAppointment(appointmentCorrelationId);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var appointment = new DentistAppointment(appointmentCorrelationId, scheduledDate);
+        Appointments.Add(appointment);
+        LastUpdatedDate = DateTime.UtcNow;
+
+        return appointment;
+    }
+
+    public DentistAppointment? FindAppointment(Guid appointmentCorrelationId)
+    {
+        return Appointments.FirstOrDefault(a => a.AppointmentCorrelationId == appointmentCorrelationId);
     }
 }

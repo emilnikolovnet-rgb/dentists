@@ -7,7 +7,7 @@ public interface IDentistRepository
     /// <summary>
     /// Loads a tracked dentist, so callers may mutate it and persist through the unit of work.
     /// </summary>
-    Task<Dentist?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+    Task<Dentist?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
 
     Task<IEnumerable<Dentist>> GetAllAsync(CancellationToken cancellationToken = default);
 
@@ -20,5 +20,5 @@ public interface IDentistRepository
         DateTime to,
         CancellationToken cancellationToken = default);
 
-    Task<bool> ExistsAsync(int id, CancellationToken cancellationToken = default);
+    Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
 }

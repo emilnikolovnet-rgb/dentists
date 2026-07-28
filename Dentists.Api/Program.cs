@@ -21,9 +21,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var databaseName = builder.Configuration["Cosmos:DatabaseName"];
 
 builder.Services.AddDbContext<DentistsDbContext>(options =>
-    options.UseSqlServer(connectionString));
+    options.UseCosmos(connectionString!, databaseName!));
 
 // Add Unit of Work and Repositories
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
@@ -47,6 +48,14 @@ app.UseExceptionHandler();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
+    // Cosmos has no migrations: the database and its containers have to exist before the
+    // first query. Provisioning outside the app is the expectation everywhere else.
+    using (var scope = app.Services.CreateScope())
+    {
+        var context = scope.ServiceProvider.GetRequiredService<DentistsDbContext>();
+        await context.Database.EnsureCreatedAsync();
+    }
+
     app.UseSwagger();
     app.UseSwaggerUI();
 }

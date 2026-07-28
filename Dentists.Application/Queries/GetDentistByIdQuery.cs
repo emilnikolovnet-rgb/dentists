@@ -7,7 +7,7 @@ using Dentists.Application.Mappings;
 
 public class GetDentistByIdQuery : IRequest<DentistDto>
 {
-    public int Id { get; set; }
+    public Guid Id { get; set; }
 }
 
 public class GetDentistByIdQueryHandler : IRequestHandler<GetDentistByIdQuery, DentistDto>

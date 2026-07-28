@@ -8,6 +8,6 @@ public class GetDentistByIdQueryValidator : AbstractValidator<GetDentistByIdQuer
     public GetDentistByIdQueryValidator()
     {
         RuleFor(x => x.Id)
-            .GreaterThan(0);
+            .NotEmpty();
     }
 }

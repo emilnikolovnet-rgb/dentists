@@ -70,7 +70,7 @@ public class GlobalExceptionHandler : IExceptionHandler
                     Instance = httpContext.Request.Path
                 };
 
-            // The row changed between loading it and saving it.
+            // The document's etag moved on between loading it and saving it.
             case DbUpdateConcurrencyException concurrencyException:
                 LogExpected(httpContext, concurrencyException);
 
@@ -82,7 +82,8 @@ public class GlobalExceptionHandler : IExceptionHandler
                     Instance = httpContext.Request.Path
                 };
 
-            // A constraint the model could not check up front, e.g. a unique index violation.
+            // A rejection the model could not check up front, e.g. a unique key violation
+            // or a document that grew past the Cosmos size limit.
             case DbUpdateException dbUpdateException:
                 LogExpected(httpContext, dbUpdateException);
 
