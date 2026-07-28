@@ -1,0 +1,15 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/Dentists.Api/bin/Debug/net10.0
+/Dentists.Api/obj/Debug/net10.0
+/Dentists.Api/obj
+/Dentists.Api/appsettings.Development.json
+/Dentists.Application/bin/Debug/net10.0
+/Dentists.Application/obj
+/Dentists.Domain/bin/Debug/net10.0
+/Dentists.Domain/obj
+/Dentists.Infrastructure/bin/Debug/net10.0
+/Dentists.Infrastructure/obj
