@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 public class DentistsDbContext : DbContext
 {
-    public const string DentistsContainer = "dentists";
+    public const string DentistsContainer = "DentistBdContainer";
 
     public DentistsDbContext(DbContextOptions<DentistsDbContext> options) : base(options)
     {
@@ -26,7 +26,7 @@ public class DentistsDbContext : DbContext
             entity.HasKey(e => e.Id);
 
             entity.Property(e => e.Id)
-                .ToJsonProperty("id");
+                .ToJsonProperty("Id");
 
             // Partitioning on the id spreads dentists evenly and keeps each aggregate — the
             // dentist and its embedded appointments — inside one logical partition, which is
@@ -44,6 +44,17 @@ public class DentistsDbContext : DbContext
             entity.Property(e => e.LastUpdatedDate)
                 .ToJsonProperty("lastUpdatedDate")
                 .IsRequired();
+
+            entity.Property(e => e.DeletedDate)
+                .ToJsonProperty("deletedDate");
+
+            // Derived from DeletedDate, so there is nothing to store.
+            entity.Ignore(e => e.IsDeleted);
+
+            // Deliberately no HasQueryFilter for the soft delete. A query filter wraps the
+            // query root, and the Cosmos provider then refuses WithPartitionKey — which would
+            // demote every point read to a cross-partition query, or fail outright. The
+            // repository filters on DeletedDate by hand instead.
 
             // Cosmos has no concurrency token of our own choosing; the server-maintained _etag
             // is what makes a read-modify-write fail rather than silently overwrite.

@@ -21,4 +21,13 @@ public interface IDentistRepository
         CancellationToken cancellationToken = default);
 
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stages a new dentist. Nothing reaches the store until the unit of work is saved.
+    /// </summary>
+    /// <remarks>
+    /// There is no counterpart for removal: deleting a dentist is soft, done by calling
+    /// <see cref="Dentist.MarkDeleted"/> and saving.
+    /// </remarks>
+    void Add(Dentist dentist);
 }

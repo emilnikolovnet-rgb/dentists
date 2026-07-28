@@ -7,8 +7,8 @@ namespace Dentists.Domain.Entities;
 /// booking has got to. The Appointments service remains the owner of the booking itself, so
 /// this entity is keyed back to it by <see cref="AppointmentCorrelationId"/>.
 /// <para>
-/// Embedded inside the owning <see cref="Dentist"/> document, so it carries no key or back
-/// reference of its own — reach it through <see cref="Dentist.Appointments"/>.
+/// Embedded inside the owning <see cref="Dentist"/> document, so it carries no back reference
+/// of its own — reach it through <see cref="Dentist.Appointments"/>.
 /// </para>
 /// </summary>
 public class DentistAppointment

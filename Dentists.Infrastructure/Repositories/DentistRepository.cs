@@ -15,20 +15,40 @@ public class DentistRepository : IDentistRepository
         _context = context;
     }
 
+    /// <summary>
+    /// Excludes soft-deleted dentists.
+    /// <para>
+    /// Spelled out per query rather than configured once as a model-wide query filter: such a
+    /// filter wraps the query root, and the Cosmos provider then refuses WithPartitionKey.
+    /// </para>
+    /// <para>
+    /// The IS_DEFINED half is not redundant. A document written before deletedDate existed has
+    /// no such property, and comparing a missing property to null yields Undefined in Cosmos
+    /// rather than true — so on that test alone every such dentist would read as deleted.
+    /// </para>
+    /// </summary>
+    private static readonly System.Linq.Expressions.Expression<Func<Dentist, bool>> NotDeleted =
+        d => !EF.Functions.IsDefined(d.DeletedDate) || d.DeletedDate == null;
+
     // Tracked on purpose: callers may mutate what this returns.
     public async Task<Dentist?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        // Naming the partition key turns this into a point read against a single partition
-        // rather than a fan-out across all of them.
-        return await _context.Dentists
+        // Naming the partition key and matching only the key keeps this a ReadItem — one RU,
+        // no query engine. Adding the soft-delete predicate here would disqualify that and
+        // demote it to a SQL query, so the check happens below instead. It costs nothing
+        // extra: either way exactly one document is fetched.
+        var dentist = await _context.Dentists
             .WithPartitionKey(id)
             .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+        return dentist is { DeletedDate: null } ? dentist : null;
     }
 
     public async Task<IEnumerable<Dentist>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.Dentists
             .AsNoTracking()
+            .Where(NotDeleted)
             .ToListAsync(cancellationToken);
     }
 
@@ -42,6 +62,7 @@ public class DentistRepository : IDentistRepository
         // appointments are embedded, so it stays one cross-partition query with no join.
         return await _context.Dentists
             .AsNoTracking()
+            .Where(NotDeleted)
             .Where(d => !d.Appointments.Any(a =>
                 a.Status != Statuses.Cancelled
                 && a.ScheduledDate >= from
@@ -53,6 +74,12 @@ public class DentistRepository : IDentistRepository
     {
         return await _context.Dentists
             .WithPartitionKey(id)
+            .Where(NotDeleted)
             .AnyAsync(d => d.Id == id, cancellationToken);
+    }
+
+    public void Add(Dentist dentist)
+    {
+        _context.Dentists.Add(dentist);
     }
 }

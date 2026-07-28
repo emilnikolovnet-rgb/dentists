@@ -26,20 +26,4 @@ public class UnitOfWork : IUnitOfWork
     {
         return await _context.SaveChangesAsync(cancellationToken);
     }
-
-    public async Task<TResult> ExecuteInTransactionAsync<TResult>(
-        Func<CancellationToken, Task<TResult>> operation,
-        CancellationToken cancellationToken = default)
-    {
-        // Cosmos has no user-initiated transaction to open: the provider rejects
-        // BeginTransactionAsync outright. What it does give is a transactional batch per
-        // partition key, which SaveChanges builds on its own. So the operation runs, and one
-        // SaveChanges at the end commits every change it made to a given dentist atomically.
-        // Changes spanning two dentists are two batches and can partially succeed.
-        var result = await operation(cancellationToken);
-
-        await _context.SaveChangesAsync(cancellationToken);
-
-        return result;
-    }
 }
