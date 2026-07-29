@@ -126,10 +126,10 @@ if (app.Environment.IsDevelopment())
         var context = scope.ServiceProvider.GetRequiredService<DentistsDbContext>();
         await context.Database.EnsureCreatedAsync();
     }
-
-    app.UseSwagger();
-    app.UseSwaggerUI();
 }
+
+app.UseSwagger();
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 
