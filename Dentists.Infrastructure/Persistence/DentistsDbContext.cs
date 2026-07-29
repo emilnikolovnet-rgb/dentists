@@ -95,6 +95,62 @@ public class DentistsDbContext : DbContext
                     .IsRequired()
                     .HasConversion<string>();
             });
+
+            // The transactional outbox. Owned, so a queued message shares the dentist's
+            // partition key and is written by the very same Cosmos operation as the change it
+            // announces — which is the only way to get outbox semantics on this store.
+            entity.OwnsMany(e => e.Outbox, message =>
+            {
+                message.ToJsonProperty("outbox");
+
+                message.HasKey(m => m.MessageId);
+
+                message.WithOwner().HasForeignKey("DentistId");
+                message.Property<Guid>("DentistId")
+                    .ToJsonProperty("dentistId");
+
+                message.Property(m => m.MessageId)
+                    .ToJsonProperty("messageId")
+                    .IsRequired();
+
+                message.Property(m => m.MessageType)
+                    .ToJsonProperty("messageType")
+                    .IsRequired();
+
+                message.Property(m => m.Payload)
+                    .ToJsonProperty("payload")
+                    .IsRequired();
+
+                message.Property(m => m.EnqueuedAt)
+                    .ToJsonProperty("enqueuedAt")
+                    .IsRequired();
+
+                message.Property(m => m.DispatchedAt)
+                    .ToJsonProperty("dispatchedAt");
+
+                // Derived from DispatchedAt, so there is nothing to store.
+                message.Ignore(m => m.IsDispatched);
+            });
+
+            // The consumer inbox, for deduplicating redelivered messages.
+            entity.OwnsMany(e => e.Inbox, entry =>
+            {
+                entry.ToJsonProperty("inbox");
+
+                entry.HasKey(e2 => e2.MessageId);
+
+                entry.WithOwner().HasForeignKey("DentistId");
+                entry.Property<Guid>("DentistId")
+                    .ToJsonProperty("dentistId");
+
+                entry.Property(e2 => e2.MessageId)
+                    .ToJsonProperty("messageId")
+                    .IsRequired();
+
+                entry.Property(e2 => e2.ConsumedAt)
+                    .ToJsonProperty("consumedAt")
+                    .IsRequired();
+            });
         });
     }
 }

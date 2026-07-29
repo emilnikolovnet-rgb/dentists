@@ -78,6 +78,35 @@ public class DentistRepository : IDentistRepository
             .AnyAsync(d => d.Id == id, cancellationToken);
     }
 
+    // Tracked: the reservation path may go on to mutate what this returns.
+    public async Task<Dentist?> FindByAppointmentCorrelationIdAsync(
+        Guid appointmentCorrelationId,
+        CancellationToken cancellationToken = default)
+    {
+        return await _context.Dentists
+            .Where(NotDeleted)
+            .Where(d => d.Appointments.Any(a => a.AppointmentCorrelationId == appointmentCorrelationId))
+            .FirstOrDefaultAsync(cancellationToken);
+    }
+
+    // Tracked: the dispatcher marks these dispatched and saves.
+    public async Task<IReadOnlyList<Dentist>> GetWithPendingOutboxAsync(
+        int maxDentists,
+        CancellationToken cancellationToken = default)
+    {
+        // No NotDeleted here, on purpose. A soft-deleted dentist can still be holding messages
+        // its last changes committed to publishing, and dropping those would lose them.
+        //
+        // The IS_DEFINED half matters more here than anywhere else: if the provider ever omits
+        // a null rather than writing it, "dispatchedAt = null" is Undefined and matches
+        // nothing — and an outbox that quietly never drains looks exactly like an idle one.
+        return await _context.Dentists
+            .Where(d => d.Outbox.Any(m =>
+                !EF.Functions.IsDefined(m.DispatchedAt) || m.DispatchedAt == null))
+            .Take(maxDentists)
+            .ToListAsync(cancellationToken);
+    }
+
     public void Add(Dentist dentist)
     {
         _context.Dentists.Add(dentist);

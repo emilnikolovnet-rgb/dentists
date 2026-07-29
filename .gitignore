@@ -13,3 +13,5 @@
 /Dentists.Domain/obj
 /Dentists.Infrastructure/bin/Debug/net10.0
 /Dentists.Infrastructure/obj
+/Dentists.Contracts/obj
+/Dentists.Contracts/bin/Debug/net10.0

@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="Dentists.Api/Dentists.Api.csproj" />
   <Project Path="Dentists.Application/Dentists.Application.csproj" />
+  <Project Path="Dentists.Contracts/Dentists.Contracts.csproj" />
   <Project Path="Dentists.Domain/Dentists.Domain.csproj" />
   <Project Path="Dentists.Infrastructure/Dentists.Infrastructure.csproj" />
 </Solution>

@@ -37,6 +37,18 @@ public class Dentist
     /// </summary>
     public ICollection<DentistAppointment> Appointments { get; private set; } = new List<DentistAppointment>();
 
+    /// <summary>
+    /// Integration messages raised by changes to this dentist and not yet published. Embedded
+    /// for the same reason as the appointments: they share the document's partition key, so a
+    /// change and the announcement of it are one atomic write.
+    /// </summary>
+    public ICollection<OutboxMessage> Outbox { get; private set; } = new List<OutboxMessage>();
+
+    /// <summary>
+    /// Messages already applied to this dentist, so an at-least-once redelivery can be ignored.
+    /// </summary>
+    public ICollection<InboxEntry> Inbox { get; private set; } = new List<InboxEntry>();
+
     // Constructor
     public Dentist() { }
 
@@ -130,6 +142,50 @@ public class Dentist
     }
 
     /// <summary>
+    /// Moves a booking to a new time without disturbing its status.
+    /// Returns null when this dentist has no such booking.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The booking is cancelled.</exception>
+    public DentistAppointment? RescheduleAppointment(Guid appointmentCorrelationId, DateTime scheduledDate)
+    {
+        var appointment = FindAppointment(appointmentCorrelationId);
+        if (appointment is null)
+        {
+            return null;
+        }
+
+        if (appointment.Status == Statuses.Cancelled)
+        {
+            throw new InvalidOperationException(
+                $"Appointment {appointmentCorrelationId} is cancelled and cannot be rescheduled.");
+        }
+
+        if (appointment.ScheduledDate == scheduledDate)
+        {
+            return appointment;
+        }
+
+        appointment.Reschedule(scheduledDate);
+        LastUpdatedDate = DateTime.UtcNow;
+
+        return appointment;
+    }
+
+    /// <summary>
+    /// Whether this dentist has a live booking overlapping [<paramref name="from"/>,
+    /// <paramref name="to"/>), ignoring <paramref name="exceptAppointment"/>. The in-memory
+    /// counterpart of the availability query, for checking one dentist already loaded.
+    /// </summary>
+    public bool HasConflict(DateTime from, DateTime to, Guid? exceptAppointment = null)
+    {
+        return Appointments.Any(a =>
+            a.Status != Statuses.Cancelled
+            && a.AppointmentCorrelationId != exceptAppointment
+            && a.ScheduledDate >= from
+            && a.ScheduledDate < to);
+    }
+
+    /// <summary>
     /// Applies a status to a booking without disturbing when it is scheduled.
     /// Returns null when this dentist has no such booking.
     /// </summary>
@@ -179,5 +235,109 @@ public class Dentist
     public DentistAppointment? FindAppointment(Guid appointmentCorrelationId)
     {
         return Appointments.FirstOrDefault(a => a.AppointmentCorrelationId == appointmentCorrelationId);
+    }
+
+    // ---- Outbox ----------------------------------------------------------------------
+
+    /// <summary>
+    /// Queues an integration message to be published once this dentist is saved. Call it in the
+    /// same unit of work as the change it announces — that is the whole point.
+    /// </summary>
+    public OutboxMessage EnqueueOutbox(Guid messageId, string messageType, string payload)
+    {
+        var existing = Outbox.FirstOrDefault(m => m.MessageId == messageId);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var message = new OutboxMessage(messageId, messageType, payload);
+        Outbox.Add(message);
+        LastUpdatedDate = DateTime.UtcNow;
+
+        return message;
+    }
+
+    public IEnumerable<OutboxMessage> PendingOutbox()
+    {
+        return Outbox.Where(m => !m.IsDispatched).OrderBy(m => m.EnqueuedAt);
+    }
+
+    /// <summary>
+    /// Records that a queued message reached the transport. Returns false if there is no such
+    /// pending message, which is what a duplicate dispatch looks like.
+    /// </summary>
+    public bool MarkDispatched(Guid messageId)
+    {
+        var message = Outbox.FirstOrDefault(m => m.MessageId == messageId && !m.IsDispatched);
+        if (message is null)
+        {
+            return false;
+        }
+
+        message.MarkDispatched();
+        LastUpdatedDate = DateTime.UtcNow;
+
+        return true;
+    }
+
+    // ---- Inbox -----------------------------------------------------------------------
+
+    public bool HasConsumed(Guid messageId)
+    {
+        return Inbox.Any(e => e.MessageId == messageId);
+    }
+
+    /// <summary>
+    /// Notes that a message has been applied. Returns false if it already had been, which is
+    /// the caller's signal to do nothing rather than apply it twice.
+    /// </summary>
+    public bool RecordConsumed(Guid messageId)
+    {
+        if (HasConsumed(messageId))
+        {
+            return false;
+        }
+
+        Inbox.Add(new InboxEntry(messageId));
+        LastUpdatedDate = DateTime.UtcNow;
+
+        return true;
+    }
+
+    // ---- Housekeeping ----------------------------------------------------------------
+
+    /// <summary>
+    /// Drops dispatched outbox messages and inbox entries older than <paramref name="cutoff"/>.
+    /// <para>
+    /// Not optional. Both collections live inside this document, and a Cosmos document cannot
+    /// exceed 2 MB — left alone they would eventually make the dentist unwritable. The cutoff
+    /// is the duplicate-detection window: past it, a redelivery is no longer expected, so the
+    /// record of having handled it is no longer worth its space.
+    /// </para>
+    /// </summary>
+    /// <returns>How many entries were removed.</returns>
+    public int PruneMessages(DateTime cutoff)
+    {
+        var staleOutbox = Outbox.Where(m => m.IsDispatched && m.DispatchedAt < cutoff).ToList();
+        var staleInbox = Inbox.Where(e => e.ConsumedAt < cutoff).ToList();
+
+        foreach (var message in staleOutbox)
+        {
+            Outbox.Remove(message);
+        }
+
+        foreach (var entry in staleInbox)
+        {
+            Inbox.Remove(entry);
+        }
+
+        var removed = staleOutbox.Count + staleInbox.Count;
+        if (removed > 0)
+        {
+            LastUpdatedDate = DateTime.UtcNow;
+        }
+
+        return removed;
     }
 }

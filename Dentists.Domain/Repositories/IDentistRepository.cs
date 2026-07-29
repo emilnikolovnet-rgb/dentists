@@ -23,6 +23,30 @@ public interface IDentistRepository
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// The dentist holding a given booking, or null if nobody does.
+    /// <para>
+    /// A cross-partition query — the booking id is not the partition key — so reserve for the
+    /// reservation path, where it is what stops a redelivered reservation booking the same
+    /// appointment with a second dentist.
+    /// </para>
+    /// </summary>
+    Task<Dentist?> FindByAppointmentCorrelationIdAsync(
+        Guid appointmentCorrelationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Dentists with at least one outbox message still waiting to be published, tracked so the
+    /// caller can mark them dispatched.
+    /// <para>
+    /// Deliberately includes soft-deleted dentists: deleting one must not strand messages its
+    /// earlier changes already committed to publishing.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<Dentist>> GetWithPendingOutboxAsync(
+        int maxDentists,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Stages a new dentist. Nothing reaches the store until the unit of work is saved.
     /// </summary>
     /// <remarks>
